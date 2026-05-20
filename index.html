@@ -205,17 +205,21 @@
     <div id="reportPanel" class="hidden card p-3 mb-4">
       <h5>Sales Report</h5>
       <div class="row mb-3 g-2 align-items-end">
-        <div class="col-md-3 col-6">
+        <div class="col-md-2 col-6">
           <label class="form-label fw-bold small">Start Date</label>
           <input type="date" id="reportStartDate" class="form-control form-control-sm">
         </div>
-        <div class="col-md-3 col-6">
+        <div class="col-md-2 col-6">
           <label class="form-label fw-bold small">End Date</label>
           <input type="date" id="reportEndDate" class="form-control form-control-sm">
         </div>
-        <div class="col-md-4 col-12">
-          <label class="form-label fw-bold small">Customer Name</label>
-          <input type="text" id="reportCustomerSearch" class="form-control form-control-sm" placeholder="Optional filter...">
+        <div class="col-md-3 col-6">
+          <label class="form-label fw-bold small">Customer</label>
+          <input type="text" id="reportCustomerSearch" class="form-control form-control-sm" placeholder="Optional...">
+        </div>
+        <div class="col-md-3 col-6">
+          <label class="form-label fw-bold small">Card Name</label>
+          <input type="text" id="reportCardSearch" class="form-control form-control-sm" placeholder="Optional...">
         </div>
         <div class="col-md-2 col-12">
           <button class="btn btn-primary btn-sm w-100 h-100" style="min-height: 31px;" onclick="generateReport()">SEARCH</button>
@@ -763,7 +767,8 @@
     
     let filteredTxs = allTransactions;
     if (statusFilter === 'Incomplete') {
-      filteredTxs = filteredTxs.filter(tx => tx.SalesStatus !== 'Confirmed');
+      // Excludes Confirmed and Cancelled from the Incomplete view
+      filteredTxs = filteredTxs.filter(tx => tx.SalesStatus !== 'Confirmed' && tx.SalesStatus !== 'Cancelled');
     } else if (statusFilter !== 'All') {
       filteredTxs = filteredTxs.filter(tx => tx.SalesStatus === statusFilter);
     }
@@ -998,6 +1003,7 @@
     const startStr = document.getElementById('reportStartDate').value;
     const endStr = document.getElementById('reportEndDate').value;
     const customerFilter = document.getElementById('reportCustomerSearch').value.toLowerCase().trim();
+    const cardFilter = document.getElementById('reportCardSearch').value.toLowerCase().trim(); // NEW
 
     if(!startStr || !endStr) return;
 
@@ -1015,9 +1021,17 @@
           let details;
           try { details = JSON.parse(tx.CardDetails); } catch(e) { details = {}; }
           let custName = (details.customerName || 'walk-in').toLowerCase();
+          let items = Array.isArray(details) ? details : (details.items || []); // Parse items here
 
+          // Filter by Customer Name
           if (customerFilter !== '' && !custName.includes(customerFilter)) {
             return; 
+          }
+
+          // Filter by Card Name
+          if (cardFilter !== '') {
+            let hasCard = items.some(item => item.name && item.name.toLowerCase().includes(cardFilter));
+            if (!hasCard) return; 
           }
 
           totalSales += parseFloat(tx.GrandTotal) || 0;
