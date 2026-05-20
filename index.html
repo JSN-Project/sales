@@ -398,6 +398,19 @@
     }
     return split[1] != undefined ? rupiah + ',' + split[1] : rupiah;
   }
+  function formatDateLocal(dateString) {
+    if (!dateString) return "No Date";
+    
+    // Parse the date (automatically applies your browser's local timezone, e.g., WIB)
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return dateString.split('T')[0]; // Fallback just in case
+    
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    
+    return `${yyyy}-${mm}-${dd}`;
+  }
 
   function getRawNumber(str) {
     if (!str) return '';
@@ -666,7 +679,7 @@
     document.getElementById('formTitle').innerText = "EDIT TRADE: " + id;
     document.getElementById('submitBtn').innerText = "UPDATE RECORD";
     document.getElementById('cancelEditBtn').classList.remove('hidden');
-    document.getElementById('txDate').value = tx.Date.split('T')[0];
+    document.getElementById('txDate').value = formatDateLocal(tx.Date);
     
     document.getElementById('cardContainer').innerHTML = '';
     cards = [];
@@ -702,6 +715,9 @@
     document.getElementById('submitBtn').innerText = "SAVE RECORD";
     document.getElementById('submitBtn').disabled = false;
     document.getElementById('cancelEditBtn').classList.add('hidden');
+    
+    // NEW: Reset the date to today!
+    document.getElementById('txDate').valueAsDate = new Date();
     
     document.getElementById('imageFile').value = ''; 
     document.getElementById('customerName').value = '';
@@ -854,7 +870,7 @@
       if(tx.SalesStatus === 'Confirmed') bgClass = "bg-success bg-opacity-25";
 
       let safeDate = "No Date";
-      if (tx.Date) { safeDate = String(tx.Date).split('T')[0]; }
+      if (tx.Date) { safeDate = formatDateLocal(tx.Date); }
 
       let details;
       try { details = JSON.parse(tx.CardDetails); } catch(e) { details = []; }
@@ -1082,7 +1098,7 @@
     
     paginatedTxs.forEach(tx => {
       let safeDate = "No Date";
-      if (tx.Date) { safeDate = String(tx.Date).split('T')[0]; }
+      if (tx.Date) { safeDate = formatDateLocal(tx.Date); }
 
       let details;
       try { details = JSON.parse(tx.CardDetails); } catch(e) { details = []; }
@@ -1139,7 +1155,7 @@
     reversedTxs.forEach(tx => {
       if (tx.SalesStatus === 'Paid' || tx.SalesStatus === 'Confirmed' || tx.SalesStatus === 'Deal') {
         let safeDate = "No Date";
-        if (tx.Date) { safeDate = String(tx.Date).split('T')[0]; }
+        if (tx.Date) { safeDate = formatDateLocal(tx.Date); }
 
         let details;
         try { details = JSON.parse(tx.CardDetails); } catch(e) { details = []; }
