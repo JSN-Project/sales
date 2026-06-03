@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Ubuntu:wght@400;700&display=swap" rel="stylesheet">
+  <script async src="https://docs.opencv.org/4.8.0/opencv.js" type="text/javascript"></script>
 
   <style>
     body { 
@@ -259,7 +260,43 @@
         <div class="col-2 text-end">Total (Rp)</div>
         <div class="col-1"></div>
       </div>
+      <button class="btn btn-dark btn-sm mb-3 fw-bold w-100 py-2" onclick="openScanner()">📷 MULTI-SCAN CARDS</button>
 
+<div id="scannerContainer" class="hidden mb-3 p-3 bg-dark rounded border border-secondary text-center">
+  
+  <div class="d-flex justify-content-between align-items-center text-white mb-2">
+    <span id="db-status" class="badge bg-danger border border-light">DB: LOADING</span>
+    <div>
+      <span id="queue-count" class="badge bg-secondary border border-light">Queue: 0</span>
+      <span id="match-count" class="badge bg-success border border-light">Matched: 0</span>
+    </div>
+  </div>
+
+  <div class="mb-2">
+    <select id="setFilter" class="form-select form-select-sm bg-dark text-warning border-secondary fw-bold" style="font-family: 'Ubuntu', sans-serif;">
+      <option value="All">🔍 Scan All Sets</option>
+    </select>
+  </div>
+  <div style="position: relative; width: 100%; max-height: 350px; overflow: hidden; border-radius: 8px;">
+    <video id="camera-stream" autoplay playsinline style="width: 100%; object-fit: contain;"></video>
+    <div style="position: absolute; top: 10%; left: 15%; width: 70%; height: 80%; border: 3px dashed #FFCC00; pointer-events: none;"></div>
+    
+    <div id="flash-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; transition: opacity 0.1s ease-out;"></div>
+  </div>
+  
+  <canvas id="snapshot-canvas" class="hidden"></canvas>
+  <div id="scan-status" class="text-warning fw-bold my-2 small">Align ONE card and tap Capture!</div>
+  
+  <div class="row g-2 mt-2">
+    <div class="col-8">
+      <button class="btn btn-warning w-100 fw-bold h-100 py-2" id="capture-btn" onclick="captureToQueue()" disabled>📸 CAPTURE</button>
+    </div>
+    <div class="col-4">
+      <button class="btn btn-success w-100 fw-bold h-100" id="done-btn" onclick="finishScanning()">✅ DONE</button>
+    </div>
+  </div>
+  <button class="btn btn-outline-danger btn-sm w-100 mt-2 fw-bold" onclick="closeScanner()">CANCEL</button>
+</div>
       <div id="cardContainer"></div>
       <button class="btn btn-info btn-sm mb-4 fw-bold w-100" onclick="addCardRow()">+ Add Pokemon Card</button>
 
@@ -448,12 +485,15 @@
         document.getElementById('welcomeMessage').innerText = res.username;
         
         const userRole = String(res.role).trim().toLowerCase();
-        if(userRole === 'admin') {
-          document.getElementById('adminPanel').classList.remove('hidden');
-          document.getElementById('adminTabs').classList.remove('hidden');
-          addCardRow();
-        }
+   
+      if(userRole === 'admin') {
+      document.getElementById('adminPanel').classList.remove('hidden');
+      document.getElementById('adminTabs').classList.remove('hidden');
+      addCardRow();
+      loadOrbDatabase(); // <-- ADD THIS LINE
+}
         loadTransactions();
+        loadSetCodes();
       } else {
         document.getElementById('loginError').innerText = res.message;
       }
@@ -534,11 +574,14 @@
   }
 
   function addCardRow() {
-    const card = { id: Date.now() + Math.random(), name: '', price: '', qty: 1, itemDiscount: 0, total: 0 };
-    cards.push(card);
-    buildRowHTML(card);
-    calculateGrandTotal();
-  }
+  // Fix: Generate a clean integer ID without decimals
+  const safeId = Date.now().toString() + Math.floor(Math.random() * 1000).toString();
+  
+  const card = { id: safeId, name: '', price: '', qty: 1, itemDiscount: 0, total: 0 };
+  cards.push(card);
+  buildRowHTML(card);
+  calculateGrandTotal();
+}
 
   function buildRowHTML(card) {
     const container = document.getElementById('cardContainer');
@@ -549,26 +592,26 @@
     row.innerHTML = `
       <div class="col-12 col-md-3">
         <label class="d-md-none fw-bold small text-secondary">Card Name</label>
-        <input type="text" class="form-control" placeholder="Mewtwo ex..." value="${card.name}" list="cardNameSuggestions" oninput="updateCardData(${card.id}, 'name', this.value)">
+        <input type="text" class="form-control" placeholder="Mewtwo ex..." value="${card.name}" list="cardNameSuggestions" oninput="updateCardData('${card.id}', 'name', this.value)">
       </div>
       <div class="col-4 col-md-2">
         <label class="d-md-none fw-bold small text-secondary">Price (Rp)</label>
-        <input type="text" id="priceInput_${card.id}" class="form-control" placeholder="Price" value="${card.price === '' ? '' : formatRupiah(card.price)}" oninput="formatInputRupiah(this); updateCardData(${card.id}, 'price', this.value)">
+        <input type="text" id="priceInput_${card.id}" class="form-control" placeholder="Price" value="${card.price === '' ? '' : formatRupiah(card.price)}" oninput="formatInputRupiah(this); updateCardData('${card.id}', 'price', this.value)">
       </div>
       <div class="col-4 col-md-2">
         <label class="d-md-none fw-bold small text-secondary">Qty</label>
-        <input type="number" class="form-control" placeholder="Qty" value="${card.qty}" oninput="updateCardData(${card.id}, 'qty', this.value)">
+        <input type="number" class="form-control" placeholder="Qty" value="${card.qty}" oninput="updateCardData('${card.id}', 'qty', this.value)">
       </div>
       <div class="col-4 col-md-2">
         <label class="d-md-none fw-bold small text-secondary">Disc/Item</label>
-        <input type="text" class="form-control text-warning fw-bold" placeholder="Disc" value="${card.itemDiscount ? formatRupiah(card.itemDiscount) : ''}" oninput="formatInputRupiah(this); updateCardData(${card.id}, 'itemDiscount', this.value)">
+        <input type="text" class="form-control text-warning fw-bold" placeholder="Disc" value="${card.itemDiscount ? formatRupiah(card.itemDiscount) : ''}" oninput="formatInputRupiah(this); updateCardData('${card.id}', 'itemDiscount', this.value)">
       </div>
       <div class="col-8 col-md-2 fw-bold text-end mt-2 mt-md-0 align-self-center">
         <label class="d-md-none fw-bold small text-secondary d-block">Total</label>
         Rp <span id="total_${card.id}">${formatRupiah(card.total)}</span>
       </div>
       <div class="col-4 col-md-1 text-end mt-2 mt-md-0">
-        <button class="btn btn-danger btn-sm w-100" onclick="removeCard(${card.id})">X</button>
+        <button class="btn btn-danger btn-sm w-100" onclick="removeCard('${card.id}')">X</button>
       </div>
     `;
     container.appendChild(row);
@@ -576,6 +619,8 @@
 
   function updateCardData(id, field, value) {
     const card = cards.find(c => c.id === id);
+    if (!card) return; // Safety check
+
     if(field === 'price') {
       card.price = value === '' ? '' : getRawNumber(value);
     } else if (field === 'itemDiscount') {
@@ -592,8 +637,9 @@
       }
     }
     
-    let p = Number(card.price) || 0;
-    let d = Number(card.itemDiscount) || 0;
+    // Use getRawNumber() instead of Number() to prevent NaN failures
+    let p = getRawNumber(card.price) || 0;
+    let d = getRawNumber(card.itemDiscount) || 0;
     card.total = Math.max(0, p - d) * card.qty;
     
     document.getElementById(`total_${id}`).innerText = formatRupiah(card.total);
@@ -702,8 +748,15 @@
     }
 
     cards.forEach(c => {
-      if(!c.id) c.id = Date.now() + Math.random();
+      // Use the safe ID string approach here too
+      if(!c.id) c.id = Date.now().toString() + Math.floor(Math.random() * 1000).toString();
       c.itemDiscount = c.itemDiscount || 0; 
+
+      // Safely recalculate the item total to overwrite old/corrupt database entries
+      let p = getRawNumber(c.price) || 0;
+      let d = getRawNumber(c.itemDiscount) || 0;
+      c.total = Math.max(0, p - d) * (parseInt(c.qty) || 0);
+
       buildRowHTML(c);
     });
     calculateGrandTotal();
@@ -1314,6 +1367,511 @@
 
     document.getElementById('modalBody').innerHTML = modalHtml;
     document.getElementById('txDetailModal').classList.remove('hidden');
+  }
+  let videoStream = null;
+let isOrbReady = false; // NEW: The main app will check this instead of the array length
+
+// --- 1. WEB WORKER SETUP (Moved up so it exists BEFORE the listener!) ---
+let cvWorker;
+const workerScript = `
+  importScripts('https://docs.opencv.org/4.8.0/opencv.js');
+  let parsedOrbDatabase = [];
+
+  function convertStringToDescriptor(descriptorString) {
+    if (!descriptorString || !descriptorString.includes('|')) return null;
+    try {
+      let parts = descriptorString.split('|');
+      let dims = parts[0].split(',');
+      let rows = parseInt(dims[0]), cols = parseInt(dims[1]), type = parseInt(dims[2]);
+      let binary = atob(parts[1]);
+      let data = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
+      let mat = new cv.Mat(rows, cols, type);
+      mat.data.set(data);
+      return mat;
+    } catch (e) { return null; }
+  }
+
+  self.onmessage = function(e) {
+    const data = e.data;
+    if (data.type === 'initDatabase') {
+      if (typeof cv === 'undefined' || !cv.Mat) {
+        setTimeout(() => self.onmessage(e), 500);
+        return;
+      }
+      parsedOrbDatabase = [];
+      data.rawDb.forEach(card => {
+        let des = convertStringToDescriptor(card.orbCode);
+        if (des && !des.empty()) {
+          parsedOrbDatabase.push({
+            id: card.id, name: card.name, rarity: card.rarity, 
+            setCode: card.setCode, descriptors: des
+          });
+        }
+      });
+      postMessage({ type: 'databaseReady', count: parsedOrbDatabase.length });
+    }
+    else if (data.type === 'processFrame') {
+      try {
+        let src = cv.matFromImageData(data.imageData);
+        let gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+        
+        let orb = new cv.ORB(500); 
+        let kp = new cv.KeyPointVector();
+        let liveDes = new cv.Mat();
+        orb.detectAndCompute(gray, new cv.Mat(), kp, liveDes);
+
+        let bestMatch = null;
+        let maxGoodMatches = 0;
+        let targetSet = data.selectedSet ? String(data.selectedSet).trim().toUpperCase() : 'ALL';
+
+        if (!liveDes.empty()) {
+          let bf = new cv.BFMatcher(cv.NORM_HAMMING, true);
+          for (let i = 0; i < parsedOrbDatabase.length; i++) {
+            let dbItem = parsedOrbDatabase[i];
+            let dbSetCode = dbItem.setCode ? String(dbItem.setCode).trim().toUpperCase() : '';
+            
+            // Skip cards that don't match the selected Set Code
+            if (targetSet !== 'ALL' && dbSetCode !== targetSet) {
+              continue; 
+            }
+
+            let matches = new cv.DMatchVector();
+            try {
+              bf.match(liveDes, dbItem.descriptors, matches);
+              let goodMatches = 0;
+              for (let j = 0; j < matches.size(); j++) {
+                if (matches.get(j).distance < 50) goodMatches++;
+              }
+              if (goodMatches > maxGoodMatches) {
+                maxGoodMatches = goodMatches;
+                bestMatch = { id: dbItem.id, name: dbItem.name, rarity: dbItem.rarity, setCode: dbItem.setCode };
+              }
+            } catch(err) {}
+            matches.delete();
+          }
+          bf.delete();
+        }
+        src.delete(); gray.delete(); orb.delete(); kp.delete(); liveDes.delete();
+        
+        if (bestMatch && maxGoodMatches > 15) {
+          postMessage({ type: 'matchResult', match: bestMatch });
+        } else {
+          postMessage({ type: 'matchResult', match: null });
+        }
+      } catch (err) {
+        postMessage({ type: 'error', error: err.toString() });
+      }
+    }
+  };
+`;
+const blob = new Blob([workerScript], { type: 'application/javascript' });
+cvWorker = new Worker(URL.createObjectURL(blob));
+
+// --- 2. MAIN APP LISTENER ---
+cvWorker.onmessage = function(e) {
+  const data = e.data;
+  
+  if (data.type === 'databaseReady') {
+    console.log(`Worker Ready! Loaded ${data.count} cards.`);
+    isOrbReady = true; // Tell the main app the background worker is locked and loaded
+    
+    const dbStatus = document.getElementById('db-status');
+    const capBtn = document.getElementById('capture-btn');
+    if (dbStatus) {
+      dbStatus.className = "badge bg-success border border-light";
+      dbStatus.innerText = "DB: READY";
+    }
+    if (capBtn) capBtn.disabled = false;
+  } 
+  
+  else if (data.type === 'matchResult') {
+    if (data.match) {
+      matchedResults.push(data.match);
+    }
+    updateScannerCounters();
+    setTimeout(processQueueLoop, 50); 
+  }
+};
+
+// 1. Download ORB data and feed the Worker
+async function loadOrbDatabase() {
+  const statusMsg = document.getElementById('scan-status');
+  const dbStatus = document.getElementById('db-status');
+  
+  try {
+    let localData = await getOrbFromLocal();
+    
+    // Check if the local cache is old and missing the setCode property
+    const isOldCache = localData && localData.length > 0 && !localData[0].hasOwnProperty('setCode');
+    
+    if (localData && localData.length > 0 && !isOldCache) {
+      if(statusMsg) statusMsg.innerText = "Sending local data to Background Worker...";
+      cvWorker.postMessage({ type: 'initDatabase', rawDb: localData });
+      return; 
+    }
+
+    if (isOldCache) {
+      if(statusMsg) statusMsg.innerText = "Updating database structure... downloading cloud data...";
+    } else {
+      if(statusMsg) statusMsg.innerText = "Downloading database from cloud...";
+    }
+    if(dbStatus) dbStatus.innerText = "DB: DOWNLOADING";
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: "getGlobalOrbData" })
+    });
+    const res = await response.json();
+    
+    if (res.success && res.orbDatabase && res.orbDatabase[0].id !== "ERROR") {
+      await saveOrbToLocal(res.orbDatabase);
+      cvWorker.postMessage({ type: 'initDatabase', rawDb: res.orbDatabase });
+    }
+  } catch (err) {
+    if(statusMsg) statusMsg.innerText = "Storage or Network Error.";
+  }
+}
+
+// 2. Convert text to OpenCV Matrices
+function parseOrbImages(rawDb) {
+  parsedOrbDatabase = [];
+  if (typeof cv === 'undefined' || !cv.Mat) {
+    setTimeout(() => parseOrbImages(rawDb), 1000); // Wait for OpenCV to load
+    return;
+  }
+  
+  rawDb.forEach(card => {
+    let des = convertStringToDescriptor(card.orbCode);
+    if (des && !des.empty()) {
+      parsedOrbDatabase.push({
+        id: card.id, name: card.name, rarity: card.rarity, 
+        setCode: card.setCode, descriptors: des
+      });
+    }
+  });
+ console.log(`ORB Ready! Loaded ${parsedOrbDatabase.length} cards.`);
+  
+  // --- NEW: UPDATE UI TO GREEN WHEN READY ---
+  const dbStatus = document.getElementById('db-status');
+  const capBtn = document.getElementById('capture-btn');
+  if (dbStatus) {
+    dbStatus.className = "badge bg-success border border-light";
+    dbStatus.innerText = "DB: READY";
+  }
+  if (capBtn) capBtn.disabled = false;
+  // ------------------------------------------
+}
+
+function convertStringToDescriptor(descriptorString) {
+  if (!descriptorString || !descriptorString.includes('|')) return null;
+  try {
+    let parts = descriptorString.split('|');
+    let dims = parts[0].split(',');
+    let rows = parseInt(dims[0]), cols = parseInt(dims[1]), type = parseInt(dims[2]);
+    let binary = atob(parts[1]);
+    let data = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
+    
+    let mat = new cv.Mat(rows, cols, type);
+    mat.data.set(data);
+    return mat;
+  } catch (e) { return null; }
+}
+
+// 3. Camera Controls
+async function openScanner() {
+  scanQueue = [];
+  matchedResults = [];
+  isProcessingQueue = false;
+  isFinishing = false;
+  updateScannerCounters();
+  
+  const capBtn = document.getElementById('capture-btn');
+  const dbStatus = document.getElementById('db-status');
+  
+  // Set Red/Green indicator based on whether DB is loaded
+  if (!isOrbReady) {
+    dbStatus.className = "badge bg-danger border border-light";
+    dbStatus.innerText = "DB: LOADING";
+    capBtn.disabled = true;
+  } else {
+    dbStatus.className = "badge bg-success border border-light";
+    dbStatus.innerText = "DB: READY";
+    capBtn.disabled = false;
+  }
+  
+  document.getElementById('done-btn').disabled = false;
+  document.getElementById('done-btn').innerHTML = "✅ DONE";
+  document.getElementById('scannerContainer').classList.remove('hidden');
+  document.getElementById('scan-status').innerText = "Starting camera...";
+  
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'environment', width: { ideal: 1280 } } 
+    });
+    const video = document.getElementById('camera-stream');
+    video.srcObject = videoStream;
+    document.getElementById('scan-status').innerText = "Align ONE card and tap Capture!";
+  } catch (err) {
+    document.getElementById('scan-status').innerText = "Camera access denied.";
+  }
+}
+
+function closeScanner() {
+  document.getElementById('scannerContainer').classList.add('hidden');
+  if (videoStream) {
+    videoStream.getTracks().forEach(track => track.stop());
+    videoStream = null;
+  }
+}
+
+// 4. Capture & Process ORB
+// --- QUEUE SYSTEM VARIABLES ---
+let scanQueue = [];
+let matchedResults = [];
+let isProcessingQueue = false;
+let isFinishing = false;
+
+// 1. Triggered by the 📸 CAPTURE button
+function captureToQueue() {
+  if (!isOrbReady) {
+    alert("ORB Database still loading!");
+    return;
+  }
+
+  const video = document.getElementById('camera-stream');
+  const canvas = document.getElementById('snapshot-canvas');
+  const statusMsg = document.getElementById('scan-status');
+
+  // --- 1. INSTANT FLASH ---
+  const flash = document.getElementById('flash-overlay');
+  if (flash) {
+    flash.style.transition = 'none'; 
+    flash.style.opacity = '1';       
+    void flash.offsetWidth;          
+    flash.style.transition = 'opacity 0.15s ease-out'; 
+    flash.style.opacity = '0';       
+  }
+
+  // --- 2. GRAB IMAGE INSTANTLY ---
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  scanQueue.push(imageData);
+  updateScannerCounters();
+  
+  // --- 3. UI FEEDBACK ---
+  statusMsg.innerText = `Snap! Queue: ${scanQueue.length}. Processing in background...`;
+  statusMsg.classList.replace('text-warning', 'text-info');
+
+  // Restore the warning text quickly so you know to snap the next card
+  setTimeout(() => {
+    if (!isFinishing) {
+      statusMsg.innerText = "Align next card and tap Capture!";
+      statusMsg.classList.replace('text-info', 'text-warning');
+    }
+  }, 400);
+
+  // --- 4. START INSTANT PROCESSING ---
+  // If the worker is resting, wake it up. 
+  // If it's already working, it will naturally grab this new image when it finishes its current one.
+  if (!isProcessingQueue) {
+    isProcessingQueue = true; 
+    processQueueLoop();
+  } 
+}
+
+// 2. The Background Loop (Delegates to the Web Worker)
+function processQueueLoop() {
+  if (scanQueue.length === 0) {
+    isProcessingQueue = false;
+    if (isFinishing) finalizeMatches();
+    return;
+  }
+
+  // Grab the frame
+  const imageData = scanQueue.shift(); 
+  updateScannerCounters();
+
+  // Get the currently selected Set Code
+  const selectedSetCode = document.getElementById('setFilter').value;
+
+  // Send it to the worker along with the Set Code
+  cvWorker.postMessage({ type: 'processFrame', imageData: imageData, selectedSet: selectedSetCode });
+}
+// 4. Triggered by the ✅ DONE button
+function finishScanning() {
+  isFinishing = true;
+  document.getElementById('capture-btn').disabled = true;
+  document.getElementById('done-btn').disabled = true;
+  document.getElementById('done-btn').innerHTML = "⏳ WAIT..."; 
+
+  // --- NEW: KILL CAMERA HARDWARE INSTANTLY TO SAVE BATTERY ---
+  if (videoStream) {
+    videoStream.getTracks().forEach(track => track.stop()); // Turn off the physical camera
+    videoStream = null; // Clear the variable
+    document.getElementById('camera-stream').srcObject = null; // Make the video box go black
+  }
+  // ----------------------------------------------------------
+
+  // If the worker is still chewing through a backlog, just update the text and wait.
+  if (scanQueue.length > 0 || isProcessingQueue) {
+    document.getElementById('scan-status').innerText = "Finishing background processing... please wait.";
+    document.getElementById('scan-status').className = "text-info fw-bold my-2 small";
+  } else {
+    // If the queue is already empty, finalize immediately!
+    finalizeMatches();
+  }
+}
+
+// 5. Applies everything to the cart and closes
+function finalizeMatches() {
+  let count = matchedResults.length;
+  
+  // Run your existing cart function for each match
+  matchedResults.forEach(match => addScannedCardToCart(match));
+  
+  closeScanner();
+  
+  if (count > 0) {
+    alert(`Added ${count} card(s) to the transaction!`);
+  } else {
+    alert("No cards were recognized.");
+  }
+}
+
+function updateScannerCounters() {
+  document.getElementById('queue-count').innerText = `Queue: ${scanQueue.length}`;
+  document.getElementById('match-count').innerText = `Matched: ${matchedResults.length}`;
+}
+
+// 5. Format & Auto-Fill into Sales App Cart
+const IGNORED_RARITIES = ["C", "U", "R"]; 
+
+function addScannedCardToCart(match) {
+    // --- NEW: Remove the default empty row if it hasn't been used ---
+    if (cards.length === 1 && cards[0].name.trim() === '' && (cards[0].price === '' || cards[0].price === 0)) {
+      removeCard(cards[0].id);
+    }
+    // ----------------------------------------------------------------
+
+    // Format Name: Name + Rarity (if high) + (Set)
+    let formattedName = match.name.trim();
+    if (match.rarity && !IGNORED_RARITIES.includes(match.rarity.toUpperCase())) {
+      formattedName += ` ${match.rarity.toUpperCase()}`;
+    }
+    formattedName += ` (${match.setCode.toUpperCase()})`;
+    
+    const nameLower = formattedName.toLowerCase();
+    
+    // CHECK IF CARD ALREADY EXISTS IN CART
+    let existingCard = cards.find(c => c.name.toLowerCase() === nameLower);
+
+    if (existingCard) {
+      // CARD EXISTS: Increase Qty and update totals
+      existingCard.qty += 1;
+      let p = getRawNumber(existingCard.price) || 0;
+      let d = getRawNumber(existingCard.itemDiscount) || 0;
+      existingCard.total = Math.max(0, p - d) * existingCard.qty;
+
+      const rowDiv = document.getElementById(`row_${existingCard.id}`);
+      if (rowDiv) {
+        const rowQtyInput = rowDiv.querySelector('input[type="number"]');
+        if (rowQtyInput) rowQtyInput.value = existingCard.qty;
+      }
+      
+      const rowTotalDisplay = document.getElementById(`total_${existingCard.id}`);
+      if (rowTotalDisplay) rowTotalDisplay.innerText = formatRupiah(existingCard.total);
+      
+      calculateGrandTotal();
+    } else {
+      // NEW CARD: Add to cart normally
+      const foundPrice = latestPrices[nameLower] !== undefined ? latestPrices[nameLower] : '';
+      const safeId = Date.now().toString() + Math.floor(Math.random() * 1000).toString();
+      
+      const card = { 
+        id: safeId, 
+        name: formattedName, 
+        price: foundPrice, 
+        qty: 1, 
+        itemDiscount: 0, 
+        total: getRawNumber(foundPrice) || 0
+      };
+      
+      cards.push(card);
+      buildRowHTML(card);
+      calculateGrandTotal();
+    }
+  }
+  // --- INDEXEDDB HELPER FUNCTIONS ---
+const DB_NAME = 'PokemonSalesDB';
+const STORE_NAME = 'OrbDatabase';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveOrbToLocal(orbDataArray) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    // Clear old data first, then add the new batch
+    store.clear(); 
+    orbDataArray.forEach(card => store.put(card));
+    
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function getOrbFromLocal() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAll();
+    
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+  function loadSetCodes() {
+    fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: "getSetCodes" })
+    })
+    .then(res => res.json())
+    .then(res => {
+      if (res.success && res.sets) {
+        const filter = document.getElementById('setFilter');
+        // Keep the "All" option, clear the rest
+        filter.innerHTML = '<option value="All">🔍 Scan All Sets</option>'; 
+        
+        res.sets.forEach(set => {
+          filter.innerHTML += `<option value="${set.code}">${set.code} - ${set.name}</option>`;
+        });
+      }
+    })
+    .catch(err => console.log("Failed to load sets:", err));
   }
 </script>
 </body>
