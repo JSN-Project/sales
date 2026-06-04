@@ -1567,6 +1567,7 @@ function parseOrbImages(rawDb) {
   // ------------------------------------------
 }
 // --- NEW: Force Reload Database Function ---
+// --- NEW: Force Reload Database & Sets Function ---
 async function forceReloadOrbDatabase() {
   const statusMsg = document.getElementById('scan-status');
   const dbStatus = document.getElementById('db-status');
@@ -1578,19 +1579,22 @@ async function forceReloadOrbDatabase() {
     dbStatus.innerText = "DB: UPDATING...";
   }
   if (capBtn) capBtn.disabled = true;
-  if (statusMsg) statusMsg.innerText = "Force downloading database from cloud...";
+  if (statusMsg) statusMsg.innerText = "Force downloading database & sets from cloud...";
   
   isOrbReady = false; // Lock the worker status
 
+  // 2. NEW: Trigger the set codes to reload simultaneously!
+  loadSetCodes();
+
   try {
-    // 2. Fetch directly from GAS (bypassing local cache)
+    // 3. Fetch directly from GAS (bypassing local cache)
     const response = await fetch(API_URL, {
       method: 'POST',
       body: JSON.stringify({ action: "getGlobalOrbData" })
     });
     const res = await response.json();
     
-    // 3. Save new data to cache and send to worker
+    // 4. Save new data to cache and send to worker
     if (res.success && res.orbDatabase && res.orbDatabase[0].id !== "ERROR") {
       await saveOrbToLocal(res.orbDatabase); // This overwrites the old cache
       cvWorker.postMessage({ type: 'initDatabase', rawDb: res.orbDatabase });
