@@ -272,10 +272,11 @@
     </div>
   </div>
 
-  <div class="mb-2">
+  <div class="mb-2 d-flex gap-2">
     <select id="setFilter" class="form-select form-select-sm bg-dark text-warning border-secondary fw-bold" style="font-family: 'Ubuntu', sans-serif;">
       <option value="All">🔍 Scan All Sets</option>
     </select>
+    <button class="btn btn-outline-info btn-sm fw-bold" onclick="forceReloadOrbDatabase()" title="Force Reload Database">🔄 RELOAD DB</button>
   </div>
   <div style="position: relative; width: 100%; max-height: 350px; overflow: hidden; border-radius: 8px;">
     <video id="camera-stream" autoplay playsinline style="width: 100%; object-fit: contain;"></video>
@@ -1563,7 +1564,50 @@ function parseOrbImages(rawDb) {
   if (capBtn) capBtn.disabled = false;
   // ------------------------------------------
 }
+// --- NEW: Force Reload Database Function ---
+async function forceReloadOrbDatabase() {
+  const statusMsg = document.getElementById('scan-status');
+  const dbStatus = document.getElementById('db-status');
+  const capBtn = document.getElementById('capture-btn');
 
+  // 1. Update UI to show downloading state and block capturing
+  if (dbStatus) {
+    dbStatus.className = "badge bg-warning text-dark border border-light";
+    dbStatus.innerText = "DB: UPDATING...";
+  }
+  if (capBtn) capBtn.disabled = true;
+  if (statusMsg) statusMsg.innerText = "Force downloading database from cloud...";
+  
+  isOrbReady = false; // Lock the worker status
+
+  try {
+    // 2. Fetch directly from GAS (bypassing local cache)
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: "getGlobalOrbData" })
+    });
+    const res = await response.json();
+    
+    // 3. Save new data to cache and send to worker
+    if (res.success && res.orbDatabase && res.orbDatabase[0].id !== "ERROR") {
+      await saveOrbToLocal(res.orbDatabase); // This overwrites the old cache
+      cvWorker.postMessage({ type: 'initDatabase', rawDb: res.orbDatabase });
+      if(statusMsg) statusMsg.innerText = "Update complete! Processing data...";
+    } else {
+      if (statusMsg) statusMsg.innerText = "Error fetching DB from cloud.";
+      if (dbStatus) {
+        dbStatus.className = "badge bg-danger border border-light";
+        dbStatus.innerText = "DB: ERROR";
+      }
+    }
+  } catch (err) {
+    if(statusMsg) statusMsg.innerText = "Network Error during update.";
+    if (dbStatus) {
+      dbStatus.className = "badge bg-danger border border-light";
+      dbStatus.innerText = "DB: ERROR";
+    }
+  }
+}
 function convertStringToDescriptor(descriptorString) {
   if (!descriptorString || !descriptorString.includes('|')) return null;
   try {
