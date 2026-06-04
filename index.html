@@ -1909,12 +1909,25 @@ async function getOrbFromLocal() {
     .then(res => {
       if (res.success && res.sets) {
         const filter = document.getElementById('setFilter');
-        // Keep the "All" option, clear the rest
-        filter.innerHTML = '<option value="All">🔍 Scan All Sets</option>'; 
         
+        // 1. Clear out the dropdown completely
+        filter.innerHTML = ''; 
+        
+        // 2. Safely create the default "All" option
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = 'All';
+        defaultOpt.innerText = '🔍 Scan All Sets';
+        filter.appendChild(defaultOpt);
+        
+        // 3. Safely create and append the live database sets
         res.sets.forEach(set => {
-          filter.innerHTML += `<option value="${set.code}">${set.code} - ${set.name}</option>`;
+          const opt = document.createElement('option');
+          opt.value = set.code;
+          opt.innerText = `${set.code} - ${set.name}`;
+          filter.appendChild(opt);
         });
+      } else {
+        console.log("Backend error or no sets found:", res);
       }
     })
     .catch(err => console.log("Failed to load sets:", err));
